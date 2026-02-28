@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pocketassist - Telegram TWA</title>
+    
+    <!-- Telegram Web App SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    
+    <style>
+        :root {
+            --bg-color: #212121; 
+            --header-bg: #212121;
+            --input-bg: #2f2f2f;
+            --user-bubble: #2f2f2f;
+            --bot-avatar-bg: #2563eb; /* Sleek Blue for Pocketassist */
+            --text-main: #ececec;
+            --text-muted: #b4b4b4;
+            --btn-active: #ffffff;
+            --btn-active-icon: #000000;
+            --btn-disabled: #676767;
+            --btn-disabled-icon: #212121;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            height: var(--tg-viewport-height, 100vh);
+            width: 100vw;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* --- Main App Container --- */
+        #app {
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+        }
+
+        /* --- Minimal Header --- */
+        header {
+            padding: 12px 20px;
+            padding-top: max(12px, env(safe-area-inset-top)); 
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--header-bg);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            z-index: 10;
+        }
+
+        .header-title {
+            font-size: 16px; font-weight: 500; color: #ececec;
+            display: flex; align-items: center; gap: 6px;
+        }
+
+        .header-title span { color: var(--text-muted); font-size: 15px; }
+
+        .icon-btn {
+            background: transparent; border: none; color: var(--text-main);
+            padding: 8px; border-radius: 8px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .icon-btn:active { background: rgba(255,255,255,0.1); }
+
+        /* --- Chat Box --- */
+        #chat-box {
+            flex: 1; padding: 20px; padding-bottom: 10px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 24px;
+            scroll-behavior: smooth;
+        }
+
+        .message-row { display: flex; width: 100%; animation: fadeIn 0.3s ease; }
+        
+        /* User Message Style */
+        .message-row.user { justify-content: flex-end; }
+        .message-row.user .content {
+            background: var(--user-bubble);
+            padding: 10px 16px;
+            border-radius: 20px;
+            max-width: 75%;
+            font-size: 15px;
+            line-height: 1.5;
+            word-wrap: break-word;
+        }
+
+        /* Bot Message Style */
+        .message-row.bot { justify-content: flex-start; gap: 12px; }
+        .bot-avatar {
+            width: 28px; height: 28px; border-radius: 50%;
+            background: var(--bot-avatar-bg); 
+            display: flex; justify-content: center; align-items: center;
+            flex-shrink: 0; margin-top: 2px;
+        }
+        .message-row.bot .content {
+            max-width: 85%; font-size: 15px; line-height: 1.6;
+            word-wrap: break-word; color: #ececec;
+        }
+
+        /* Markdown Styling */
+        .bot .content p { margin: 0 0 16px 0; }
+        .bot .content p:last-child { margin: 0; }
+        .bot .content pre {
+            background: #0d0d0d; border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px; border-radius: 8px; overflow-x: auto;
+            font-size: 13.5px; margin: 12px 0;
+        }
+        .bot .content code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            color: #ececec;
+        }
+        .bot .content p code {
+            background: rgba(255,255,255,0.1); padding: 2px 4px; border-radius: 4px; font-size: 14px;
+        }
+
+        /* --- Input Area --- */
+        .input-container {
+            padding: 10px 20px 20px 20px;
+            padding-bottom: max(20px, env(safe-area-inset-bottom)); 
+            background: var(--bg-color);
+        }
+
+        .input-box {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--input-bg);
+            padding: 6px 6px 6px 16px;
+            border-radius: 30px;
+        }
+
+        #user-input {
+            flex: 1; background: transparent; border: none; outline: none;
+            color: var(--text-main); font-size: 15px; font-family: inherit;
+            padding: 8px 0;
+        }
+
+        #user-input::placeholder { color: var(--text-muted); }
+
+        #send-btn {
+            background: var(--btn-disabled); color: var(--btn-disabled-icon);
+            border: none; width: 32px; height: 32px; border-radius: 50%;
+            cursor: pointer; display: flex; justify-content: center; align-items: center;
+            transition: all 0.2s ease; flex-shrink: 0;
+        }
+
+        #send-btn.active { background: var(--btn-active); color: var(--btn-active-icon); }
+        #send-btn.active:active { transform: scale(0.9); }
+
+        /* Animations */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* Blinking Cursor for loading */
+        .blinking-cursor {
+            display: inline-block; width: 10px; height: 10px;
+            background-color: var(--text-main); border-radius: 50%;
+            animation: pulse 1s infinite alternate;
+        }
+        @keyframes pulse { 0% { opacity: 0.3; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1); } }
+
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <!-- Header -->
+    <header>
+        <button class="icon-btn" onclick="tg.close()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        
+        <div class="header-title">
+            Pocketassist <span>AI</span>
+        </div>
+
+        <button class="icon-btn" onclick="clearChat()" title="New Chat">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        </button>
+    </header>
+
+    <!-- Chat Area -->
+    <main id="chat-box"></main>
+
+    <!-- Input Area -->
+    <footer class="input-container">
+        <div class="input-box">
+            <input type="text" id="user-input" placeholder="Message Pocketassist..." autocomplete="off">
+            <button id="send-btn" disabled>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+            </button>
+        </div>
+    </footer>
+</div>
+
+<script>
+    // 🔴 REPLACE WITH YOUR GEMINI API KEY 🔴
+    const API_KEY = "AIzaSyDdTHV1GMUOHSTT_8ADOaLFqTVH68uBGPE"; 
+    const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+    // --- TELEGRAM SDK SETUP ---
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.ready();
+
+    document.documentElement.style.setProperty('--tg-viewport-height', `${tg.viewportHeight}px`);
+    tg.onEvent('viewportChanged', () => {
+        document.documentElement.style.setProperty('--tg-viewport-height', `${tg.viewportHeight}px`);
+    });
+
+    const userName = tg.initDataUnsafe?.user?.first_name || "there";
+
+    const chatBox = document.getElementById("chat-box");
+    const userInput = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+
+    let conversationHistory = [];
+
+    // Change send button color when typing
+    userInput.addEventListener('input', () => {
+        if (userInput.value.trim().length > 0) {
+            sendBtn.classList.add('active');
+            sendBtn.disabled = false;
+        } else {
+            sendBtn.classList.remove('active');
+            sendBtn.disabled = true;
+        }
+    });
+
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !sendBtn.disabled) sendMessage();
+    });
+
+    sendBtn.addEventListener('click', sendMessage);
+
+    window.onload = () => {
+        const greeting = `Hello ${userName}! I'm **Pocketassist**. How can I help you today?`;
+        appendBotMessage(greeting);
+    };
+
+    function scrollToBottom() {
+        setTimeout(() => { chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' }); }, 50);
+    }
+
+    function clearChat() {
+        conversationHistory = [];
+        chatBox.innerHTML = "";
+        appendBotMessage("Chat cleared. How can I help you today?");
+    }
+
+    function appendUserMessage(text) {
+        const row = document.createElement("div");
+        row.className = "message-row user";
+        row.innerHTML = `<div class="content">${text}</div>`;
+        chatBox.appendChild(row);
+        scrollToBottom();
+    }
+
+    // Modern AI Sparkle Icon for Pocketassist
+    const botIconSVG = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+    `;
+
+    function appendBotMessage(text, isMarkdown = true) {
+        const row = document.createElement("div");
+        row.className = "message-row bot";
+        
+        row.innerHTML = `
+            <div class="bot-avatar">${botIconSVG}</div>
+            <div class="content">${isMarkdown ? marked.parse(text) : text}</div>
+        `;
+        chatBox.appendChild(row);
+        scrollToBottom();
+    }
+
+    function showLoading() {
+        const row = document.createElement("div");
+        row.className = "message-row bot";
+        row.id = "loading-indicator";
+        row.innerHTML = `
+            <div class="bot-avatar">${botIconSVG}</div>
+            <div class="content"><div class="blinking-cursor"></div></div>
+        `;
+        chatBox.appendChild(row);
+        scrollToBottom();
+    }
+
+    function removeLoading() {
+        const loading = document.getElementById("loading-indicator");
+        if (loading) loading.remove();
+    }
+
+    async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        userInput.value = "";
+        sendBtn.classList.remove('active');
+        sendBtn.disabled = true;
+
+        appendUserMessage(text);
+        showLoading();
+        conversationHistory.push({ role: "user", parts: [{ text: text }] });
+
+        try {
+            const response = await fetch(API_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    // System instructions updated for Pocketassist
+                    system_instruction: {
+                        parts: [{ text: `You are Pocketassist, a highly intelligent, concise, and helpful AI assistant built into a Telegram Mini App. The user's name is ${userName}. Use Markdown to format your responses beautifully.` }]
+                    },
+                    contents: conversationHistory 
+                })
+            });
+
+            removeLoading();
+
+            if (!response.ok) throw new Error(`API Error: ${response.status}`);
+
+            const data = await response.json();
+            const candidates = data.candidates;
+            if (!candidates || candidates.length === 0 || !candidates[0].content) {
+                throw new Error("Response blocked or empty.");
+            }
+
+            const botReply = candidates[0].content.parts[0].text;
+            appendBotMessage(botReply, true);
+            conversationHistory.push({ role: "model", parts: [{ text: botReply }] });
+
+        } catch (error) {
+            removeLoading();
+            appendBotMessage("An error occurred. Please check your connection or API key.", false);
+            conversationHistory.pop(); 
+        } finally {
+            setTimeout(() => userInput.focus(), 100);
+        }
+    }
+</script>
+
+</body>
+</html>
